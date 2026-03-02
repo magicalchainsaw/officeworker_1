@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root123
+      - DB_NAME=officeworker
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - officeworker-net
+
+  mysql:
+    image: mysql:8.0
+    container_name: officeworker-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=officeworker
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - officeworker-net
+
+  redis:
+    image: redis:7.2
+    container_name: officeworker-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - officeworker-net
+
+volumes:
+  mysql-data:
+
+networks:
+  officeworker-net:
+    driver: bridge
