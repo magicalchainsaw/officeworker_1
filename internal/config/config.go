@@ -51,14 +51,46 @@ type LogConfig struct {
 	Format string
 }
 
+func setDefaults() {
+	viper.SetDefault("SERVER_PORT", "8080")
+	viper.SetDefault("SERVER_MODE", "debug")
+	viper.SetDefault("SERVER_READ_TIMEOUT", "15s")
+	viper.SetDefault("SERVER_WRITE_TIMEOUT", "15s")
+
+	viper.SetDefault("DB_HOST", "localhost")
+	viper.SetDefault("DB_PORT", 3306)
+	viper.SetDefault("DB_USER", "root")
+	viper.SetDefault("DB_PASSWORD", "")
+	viper.SetDefault("DB_NAME", "officeworker")
+	viper.SetDefault("DB_MAX_IDLE_CONNS", 10)
+	viper.SetDefault("DB_MAX_OPEN_CONNS", 100)
+	viper.SetDefault("DB_CONN_MAX_LIFETIME", "3600s")
+
+	viper.SetDefault("REDIS_HOST", "localhost")
+	viper.SetDefault("REDIS_PORT", 6379)
+	viper.SetDefault("REDIS_PASSWORD", "")
+	viper.SetDefault("REDIS_DB", 0)
+
+	viper.SetDefault("JWT_SECRET", "your-secret-key-change-in-production")
+	viper.SetDefault("JWT_EXPIRATION", "24h")
+	viper.SetDefault("JWT_REFRESH_EXPIRATION", "168h")
+
+	viper.SetDefault("LOG_LEVEL", "info")
+	viper.SetDefault("LOG_FORMAT", "json")
+}
+
 func Load() (*Config, error) {
+	setDefaults()
+
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
 	viper.AddConfigPath(".")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to read config: %w", err)
+		}
 	}
 
 	var cfg Config

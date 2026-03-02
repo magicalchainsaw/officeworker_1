@@ -9,6 +9,7 @@ import (
 
 	"officeworker/internal/config"
 	"officeworker/internal/pkg/gin"
+	"officeworker/internal/pkg/logger"
 	"officeworker/internal/pkg/middleware"
 	"officeworker/internal/repository"
 	"officeworker/models"
@@ -20,15 +21,21 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-
-	logger.Info("Starting officeworker server...")
-
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatal("Failed to load config", zap.Error(err))
 	}
+
+	log, err := logger.New(&logger.Config{
+		Level:  cfg.Log.Level,
+		Format: cfg.Log.Format,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer log.Sync()
+
+	logger.Info("Starting officeworker server...")
 
 	db, err := repository.NewMySQL(&repository.DatabaseConfig{
 		Host:            cfg.Database.Host,
@@ -60,8 +67,8 @@ func main() {
 
 	server.Use(
 		middleware.CORS(),
-		middleware.Logger(middleware.LoggerConfig{Logger: logger}),
-		middleware.Recovery(middleware.RecoveryConfig{Logger: logger}),
+		middleware.Logger(middleware.LoggerConfig{Logger: log}),
+		middleware.Recovery(middleware.RecoveryConfig{Logger: log}),
 	)
 
 	router := gin.NewRouterGroup(server.Engine())
