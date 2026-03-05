@@ -8,10 +8,14 @@ import (
 	"time"
 
 	"officeworker/internal/config"
+	"officeworker/internal/handler"
 	"officeworker/internal/pkg/gin"
+	"officeworker/internal/pkg/jwt"
 	"officeworker/internal/pkg/logger"
 	"officeworker/internal/pkg/middleware"
+	"officeworker/internal/pkg/redis"
 	"officeworker/internal/repository"
+	"officeworker/internal/service"
 	"officeworker/models"
 
 	"go.uber.org/zap"
@@ -56,6 +60,25 @@ func main() {
 	}
 	logger.Info("Database migrated successfully")
 
+	redisClient, err := redis.New(&redis.Config{
+		Host:     cfg.Redis.Host,
+		Port:     cfg.Redis.Port,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	if err != nil {
+		logger.Fatal("Failed to connect to redis", zap.Error(err))
+	}
+	defer redisClient.Close()
+	logger.Info("Redis connected successfully")
+
+	jwtMgr := jwt.New(cfg.JWT.Secret, cfg.JWT.Expiration, cfg.JWT.RefreshExpiration)
+	blacklist := redis.NewBlacklist(redisClient.GetClient())
+	userRepo := repository.NewUserRepository(db)
+	authService := service.NewAuthService(userRepo, jwtMgr, blacklist, cfg.JWT.Expiration)
+	authHandler := handler.NewAuthHandler(authService, jwtMgr, blacklist, cfg.JWT.Expiration)
+	authMiddleware := middleware.NewAuthMiddleware(jwtMgr, blacklist)
+
 	ginConfig := &gin.Config{
 		Port:         cfg.Server.Port,
 		Mode:         cfg.Server.Mode,
@@ -73,6 +96,7 @@ func main() {
 
 	router := gin.NewRouterGroup(server.Engine())
 	router.SetupRoutes()
+	router.SetupAuthRoutes(authHandler, authMiddleware)
 
 	go func() {
 		if err := server.Run(); err != nil {
