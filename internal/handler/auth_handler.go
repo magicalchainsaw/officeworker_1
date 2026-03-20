@@ -1,34 +1,19 @@
 package handler
 
 import (
-	"net/http"
-	"officeworker/internal/pkg/jwt"
 	"officeworker/internal/pkg/response"
 	"officeworker/internal/service"
-	"officeworker/internal/pkg/redis"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
 	authService *service.AuthService
-	jwtMgr      *jwt.Manager
-	blacklist   *redis.Blacklist
-	jwtExpiry   time.Duration
 }
 
-func NewAuthHandler(
-	authService *service.AuthService,
-	jwtMgr *jwt.Manager,
-	blacklist *redis.Blacklist,
-	jwtExpiry time.Duration,
-) *AuthHandler {
+func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
-		jwtMgr:      jwtMgr,
-		blacklist:   blacklist,
-		jwtExpiry:   jwtExpiry,
 	}
 }
 
@@ -83,14 +68,13 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		response.Error(c, "missing authorization header")
+	accessToken, exists := c.Get("access_token")
+	if !exists {
+		response.Error(c, "user not authenticated")
 		return
 	}
 
-	accessToken := authHeader[7:]
-	if err := h.authService.Logout(accessToken); err != nil {
+	if err := h.authService.Logout(accessToken.(string)); err != nil {
 		response.Error(c, err.Error())
 		return
 	}

@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"officeworker/internal/pkg/jwt"
 	"officeworker/internal/pkg/redis"
 	"officeworker/internal/pkg/response"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,18 +25,11 @@ func NewAuthMiddleware(jwtMgr *jwt.Manager, blacklist *redis.Blacklist) *AuthMid
 
 func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			response.AbortWithError(c, http.StatusUnauthorized, "missing authorization header")
+		tokenString, err := extractBearerToken(c.GetHeader("Authorization"))
+		if err != nil {
+			response.AbortWithError(c, http.StatusUnauthorized, err.Error())
 			return
 		}
-
-		if len(authHeader) < 7 || authHeader[:7] != "Bearer " {
-			response.AbortWithError(c, http.StatusUnauthorized, "invalid authorization header format")
-			return
-		}
-
-		tokenString := authHeader[7:]
 
 		blacklisted, err := m.blacklist.Exists(tokenString)
 		if err != nil {
@@ -55,6 +50,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
+		c.Set("access_token", tokenString)
 
 		c.Next()
 	}
@@ -79,4 +75,21 @@ func (m *AuthMiddleware) RequireRole(roles ...string) gin.HandlerFunc {
 		response.AbortWithError(c, http.StatusForbidden, "insufficient permissions")
 		c.Abort()
 	}
+}
+
+func extractBearerToken(authHeader string) (string, error) {
+	if authHeader == "" {
+		return "", errors.New("missing authorization header")
+	}
+
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return "", errors.New("invalid authorization header format")
+	}
+
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	if token == "" {
+		return "", errors.New("missing bearer token")
+	}
+
+	return token, nil
 }

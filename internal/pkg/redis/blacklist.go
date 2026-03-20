@@ -1,14 +1,11 @@
 package redis
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
-
-var ctx = context.Background()
 
 type Blacklist struct {
 	client *redis.Client

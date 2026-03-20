@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,9 +24,6 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatal("Failed to load config", zap.Error(err))
@@ -75,8 +74,12 @@ func main() {
 	jwtMgr := jwt.New(cfg.JWT.Secret, cfg.JWT.Expiration, cfg.JWT.RefreshExpiration)
 	blacklist := redis.NewBlacklist(redisClient.GetClient())
 	userRepo := repository.NewUserRepository(db)
+	sessionRepo := repository.NewSessionRepository(db)
+	agentTaskRepo := repository.NewAgentTaskRepository(db)
 	authService := service.NewAuthService(userRepo, jwtMgr, blacklist, cfg.JWT.Expiration)
-	authHandler := handler.NewAuthHandler(authService, jwtMgr, blacklist, cfg.JWT.Expiration)
+	sessionService := service.NewSessionService(sessionRepo, agentTaskRepo)
+	authHandler := handler.NewAuthHandler(authService)
+	sessionHandler := handler.NewSessionHandler(sessionService)
 	authMiddleware := middleware.NewAuthMiddleware(jwtMgr, blacklist)
 
 	ginConfig := &gin.Config{
@@ -97,10 +100,13 @@ func main() {
 	router := gin.NewRouterGroup(server.Engine())
 	router.SetupRoutes()
 	router.SetupAuthRoutes(authHandler, authMiddleware)
+	router.SetupSessionRoutes(sessionHandler, authMiddleware)
 
 	go func() {
 		if err := server.Run(); err != nil {
-			logger.Fatal("Server failed to start", zap.Error(err))
+			if !errors.Is(err, http.ErrServerClosed) {
+				logger.Fatal("Server failed to start", zap.Error(err))
+			}
 		}
 	}()
 
@@ -115,11 +121,16 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	sqlDB, err := db.DB()
-	if err == nil {
-		sqlDB.Close()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Failed to shutdown HTTP server", zap.Error(err))
 	}
 
-	<-shutdownCtx.Done()
+	sqlDB, err := db.DB()
+	if err == nil {
+		if err := sqlDB.Close(); err != nil {
+			logger.Error("Failed to close database connection", zap.Error(err))
+		}
+	}
+
 	logger.Info("Server stopped")
 }

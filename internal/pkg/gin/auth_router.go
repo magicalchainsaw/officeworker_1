@@ -3,8 +3,6 @@ package gin
 import (
 	"officeworker/internal/handler"
 	"officeworker/internal/pkg/middleware"
-
-	"github.com/gin-gonic/gin"
 )
 
 func (rg *RouterGroup) SetupAuthRoutes(authHandler *handler.AuthHandler, authMiddleware *middleware.AuthMiddleware) {
